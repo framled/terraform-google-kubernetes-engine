@@ -1,5 +1,17 @@
 locals {
   name_prefix = "${var.general["name"]}-${var.general["env"]}"
+  location = coalesce(var.region, var.zone)
+}
+
+# This file contains all the interactions with Google Cloud
+provider "google" {
+  region  = var.region
+  project = var.project
+}
+
+provider "google-beta" {
+  region  = var.region
+  project = var.project
 }
 
 # This data source fetches the project name, and provides the appropriate URLs to use for container registry for this project.
@@ -9,42 +21,49 @@ data "google_container_registry_repository" "registry" {}
 # Provides access to available Google Container Engine versions in a zone for a given project.
 # https://www.terraform.io/docs/providers/google/d/google_container_engine_versions.html
 data "google_container_engine_versions" "engine_version" {
-  location = "${var.general["location"]}"
+  location = local.location
 }
 
 # Manages a Node Pool resource within GKE
 # https://www.terraform.io/docs/providers/google/r/container_node_pool.html
 resource "google_container_node_pool" "new_container_cluster_node_pool" {
-  count = "${length(var.node_pool)}"
+  count = length(var.node_pool)
 
-  name       = "${local.name_prefix}-${var.general["zone"]}-pool-${count.index}"
-  location       = "${var.general["location"]}"
-  node_count = "${lookup(var.node_pool[count.index], "node_count", 3)}"
-  cluster    = "${google_container_cluster.new_container_cluster.name}"
+  project               = data.google_project.project.project_id
+  name                  = "${local.name_prefix}-${local.location}-pool-${count.index}"
+  location              = local.location
+  cluster               = google_container_cluster.new_container_cluster.name
+  initial_node_count    = lookup(var.node_pool, "node_count", 2)
+  node_count            = lookup(var.node_pool[count.index], "node_count", 3)
 
   node_config {
-    disk_size_gb    = "${lookup(var.node_pool[count.index], "disk_size_gb", 10)}"
-    disk_type       = "${lookup(var.node_pool[count.index], "disk_type", "pd-standard")}"
-    image_type      = "${lookup(var.node_pool[count.index], "image", "COS")}"
-    local_ssd_count = "${lookup(var.node_pool[count.index], "local_ssd_count", 0)}"
-    machine_type    = "${lookup(var.node_pool[count.index], "machine_type", "n1-standard-1")}"
+    disk_size_gb    = lookup(var.node_pool[count.index], "disk_size_gb", 10)
+    disk_type       = lookup(var.node_pool[count.index], "disk_type", "pd-standard")
+    image_type      = lookup(var.node_pool[count.index], "image", "COS")
+    local_ssd_count = lookup(var.node_pool[count.index], "local_ssd_count", 0)
+    machine_type    = lookup(var.node_pool[count.index], "machine_type", "n1-standard-1")
 
-    oauth_scopes    = "${split(",", lookup(var.node_pool[count.index], "oauth_scopes", "https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring"))}"
-    preemptible     = "${lookup(var.node_pool[count.index], "preemptible", false)}"
-    service_account = "${lookup(var.node_pool[count.index], "service_account", "default")}"
-    labels          = "${var.labels}"
-    tags            = "${var.tags}"
-    metadata        = "${var.metadata}"
+    oauth_scopes    = split(",", lookup(var.node_pool[count.index], "oauth_scopes", "https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring"))
+    preemptible     = lookup(var.node_pool[count.index], "preemptible", false)
+    service_account = lookup(var.node_pool[count.index], "service_account", "default")
+    labels          = var.labels
+    tags            = var.tags
+    metadata        = var.metadata
   }
 
   autoscaling {
-    min_node_count = "${lookup(var.node_pool[count.index], "min_node_count", 2)}"
-    max_node_count = "${lookup(var.node_pool[count.index], "max_node_count", 3)}"
+    min_node_count = lookup(var.node_pool[count.index], "min_node_count", 2)
+    max_node_count = lookup(var.node_pool[count.index], "max_node_count", 3)
   }
 
   management {
-    auto_repair  = "${lookup(var.node_pool[count.index], "auto_repair", true)}"
-    auto_upgrade = "${lookup(var.node_pool[count.index], "auto_upgrade", true)}"
+    auto_repair  = lookup(var.node_pool[count.index], "auto_repair", true)
+    auto_upgrade = lookup(var.node_pool[count.index], "auto_upgrade", true)
+  }
+
+  upgrade_settings {
+    max_surge = lookup(var.node_pool[count.index], "upgrade_max_surge", 1)
+    max_unavailable = lookup(var.node_pool[count.index], "upgrade_max_unavailable", 1)
   }
 }
 
@@ -53,68 +72,92 @@ resource "google_container_node_pool" "new_container_cluster_node_pool" {
 resource "google_container_cluster" "new_container_cluster" {
   name                      = "${local.name_prefix}-${var.general["location"]}-master"
   description               = "Kubernetes ${var.general["name"]} in ${var.general["location"]}"
-  location                  = "${var.general["location"]}"
+  location                  = local.location
+  project                   = data.google_project.project.project_id
 
-  network                   = "${lookup(var.master, "network", "default")}"
-  subnetwork                = "${lookup(var.master, "subnetwork", "default")}"
-  additional_zones          = ["${var.node_additional_zones}"]
-  initial_node_count        = "${lookup(var.default_node_pool, "node_count", 2)}"
-  remove_default_node_pool  = "${lookup(var.default_node_pool, "remove", false)}"
+  network                   = data.google_compute_network.network.self_link
+  subnetwork                = data.google_compute_subnetwork.subnetwork.self_link
+  node_locations            = var.node_locations
+  initial_node_count        = lookup(var.node_pool, "node_count", 2)
+  remove_default_node_pool  = lookup(var.node_pool, "remove", false)
 
   addons_config {
     horizontal_pod_autoscaling {
-      disabled = "${lookup(var.master, "disable_horizontal_pod_autoscaling", false)}"
+      disabled = lookup(var.addons_config, "disable_horizontal_pod_autoscaling", false)
     }
 
     http_load_balancing {
-      disabled = "${lookup(var.master, "disable_http_load_balancing", false)}"
-    }
-
-    kubernetes_dashboard {
-      disabled = "${lookup(var.master, "disable_kubernetes_dashboard", false)}"
+      disabled = lookup(var.addons_config, "disable_http_load_balancing", false)
     }
 
     network_policy_config {
-      disabled = "${lookup(var.master, "disable_network_policy_config", true)}"
+      disabled = lookup(var.addons_config, "disable_network_policy_config", true)
+    }
+
+    istio_config {
+      disabled = lookup(var.beta_addons_config, "disable_istio_config", true)
+      auth = lookup(var.beta_addons_config, "istio_auth_mutual_tls", true)
     }
   }
 
+  # this have to be here :/, twice
+  network_policy {
+    enabled = !lookup(var.addons_config, "disable_network_policy_config", true)
+  }
+
   # cluster_ipv4_cidr - default
-  enable_kubernetes_alpha = "${lookup(var.master, "enable_kubernetes_alpha", false)}"
-  enable_legacy_abac      = "${lookup(var.master, "enable_legacy_abac", false)}"
-  ip_allocation_policy    = "${var.ip_allocation_policy}"
+  enable_kubernetes_alpha = lookup(var.master, "enable_kubernetes_alpha", false)
+  enable_legacy_abac      = lookup(var.master, "enable_legacy_abac", false)
+
+  # Allocate IPs in our subnetwork
+  ip_allocation_policy {
+    cluster_secondary_range_name  = google_compute_subnetwork.subnetwork.secondary_ip_range[0].range_name
+    services_secondary_range_name = google_compute_subnetwork.subnetwork.secondary_ip_range[1].range_name
+  }
 
   maintenance_policy {
     daily_maintenance_window {
-      start_time = "${lookup(var.master, "maintenance_window", "04:30")}"
+      start_time = lookup(var.master, "maintenance_window", "04:30")
     }
   }
 
   # master_authorized_networks_config - disable (security)
-  min_master_version = "${lookup(var.master, "version", data.google_container_engine_versions.engine_version.latest_master_version)}"
-  node_version       = "${lookup(var.master, "version", data.google_container_engine_versions.engine_version.latest_node_version)}"
-  monitoring_service = "${lookup(var.master, "monitoring_service", "none")}"
-  logging_service    = "${lookup(var.master, "logging_service", "logging.googleapis.com")}"
+  min_master_version = lookup(var.master, "version", data.google_container_engine_versions.engine_version.latest_master_version)
+  node_version       = lookup(var.master, "version", data.google_container_engine_versions.engine_version.latest_node_version)
+  monitoring_service = lookup(var.master, "monitoring_service", "monitoring.googleapis.com/kubernetes")
+  logging_service    = lookup(var.master, "logging_service", "logging.googleapis.com/kubernetes")
 
-  node_config {
-    disk_size_gb    = "${lookup(var.default_node_pool, "disk_size_gb", 10)}"
-    disk_type       = "${lookup(var.default_node_pool, "disk_type", "pd-standard")}"
-    image_type      = "${lookup(var.default_node_pool, "image", "COS")}"
-    local_ssd_count = "${lookup(var.default_node_pool, "local_ssd_count", 0)}"
-    machine_type    = "${lookup(var.default_node_pool, "machine_type", "n1-standard-1")}"
-    # min_cpu_platform - disable (useless)
+  # Disable basic authentication and cert-based authentication.
+  master_auth {
+    username = ""
+    password = ""
 
-    # BUG Provider - recreate loop
-    # guest_accelerator {
-    #   count = "${lookup(var.master, "gpus_number", 0)}"
-    #   type  = "${lookup(var.master, "gpus_type", "nvidia-tesla-k80")}"
-    # }
+    client_certificate_config {
+      issue_client_certificate = false
+    }
+  }
 
-    oauth_scopes    = ["${split(",", lookup(var.default_node_pool, "oauth_scopes", "https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring"))}"]
-    preemptible     = "${lookup(var.default_node_pool, "preemptible", false)}"
-    service_account = "${lookup(var.default_node_pool, "service_account", "default")}"
-    labels          = "${var.labels}"
-    tags            = "${var.tags}"
-    metadata        = "${var.metadata}"
+  # Specify the list of CIDRs which can access the master's API
+  master_authorized_networks_config {
+    dynamic "cidr_blocks" {
+      for_each = var.kubernetes_master_authorized_networks
+      content {
+        cidr_block   = cidr_blocks.value.cidr_block
+        display_name = cidr_blocks.value.display_name
+      }
+    }
+  }
+
+  # Configure the cluster to be private (not have public facing IPs)
+  private_cluster_config {
+    # This field is misleading. This prevents access to the master API from
+    # any external IP. While that might represent the most secure
+    # configuration, it is not ideal for most setups. As such, we disable the
+    # private endpoint (allow the public endpoint) and restrict which CIDRs
+    # can talk to that endpoint.
+    enable_private_endpoint = false
+
+    enable_private_nodes   = true
+    master_ipv4_cidr_block = var.kubernetes_masters_ipv4_cidr
   }
 }

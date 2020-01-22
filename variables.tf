@@ -5,51 +5,172 @@
 # https://www.terraform.io/docs/providers/google/d/google_container_registry_repository.html
 
 ##########################
-###         GKE        ###
+###       Global       ###
 ##########################
 
 # Parameters authorized:
 # name (mandatory)
-# location (mandatory)
 # env (mandatory)
 variable "general" {
   type        = "map"
   description = "Global parameters"
 }
 
+variable "region" {
+  type        = string
+  default     = "us-east4"
+  description = "Region in which to create the cluster and run Atlantis."
+}
+
+variable zone {
+  type = "string"
+  description = "The zone where the cluster is located. Set up this if you want a zonal cluster"
+}
+
+##########################
+###       Project      ###
+##########################
+
+variable "project" {
+  type        = string
+  default     = ""
+  description = "Project ID where Terraform is authenticated to run to create additional projects. If provided, Terraform will create the GKE and cluster inside this project. If not given, Terraform will generate a new project."
+}
+
+variable "org_id" {
+  type        = string
+  description = "Organization ID."
+}
+
+variable "billing_account" {
+  type        = string
+  description = "Billing account ID."
+}
+
+variable "project_services" {
+  type = list(string)
+  default = [
+    "cloudkms.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "container.googleapis.com",
+    "compute.googleapis.com",
+    "gcp.redisenterprise.com",
+    "iam.googleapis.com",
+    "logging.googleapis.com",
+    "monitoring.googleapis.com",
+  ]
+  description = "List of services to enable on the project."
+}
+
+variable "service_account_iam_roles" {
+  type = list(string)
+  default = [
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/monitoring.viewer",
+  ]
+  description = "List of IAM roles to assign to the service account."
+}
+
+variable "service_account_custom_iam_roles" {
+  type        = list(string)
+  default     = []
+  description = "List of arbitrary additional IAM roles to attach to the service account on the cluster nodes."
+}
+
+##########################
+###       Network      ###
+##########################
+
+variable network {
+  type = "string"
+  description = "Network for the GKE, by default would create a new network"
+  default = ""
+}
+
+variable subnetwork {
+  type = "string"
+  description = "Network for the GKE, by default would create a new network"
+  default = ""
+}
+
+##########################
+###         GKE        ###
+##########################
+variable "kubernetes_network_ipv4_cidr" {
+  type        = string
+  default     = "10.0.96.0/22"
+  description = "IP CIDR block for the subnetwork. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
+}
+
+variable "kubernetes_pods_ipv4_cidr" {
+  type        = string
+  default     = "10.0.92.0/22"
+  description = "IP CIDR block for pods. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
+}
+
+variable "kubernetes_services_ipv4_cidr" {
+  type        = string
+  default     = "10.0.88.0/22"
+  description = "IP CIDR block for services. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
+}
+
+variable "kubernetes_masters_ipv4_cidr" {
+  type        = string
+  default     = "10.0.82.0/28"
+  description = "IP CIDR block for the Kubernetes master nodes. This must be exactly /28 and cannot overlap with any other IP CIDR ranges."
+}
+
+variable "kubernetes_master_authorized_networks" {
+  type = list(object({
+    display_name = string
+    cidr_block   = string
+  }))
+
+  default = [
+    {
+      display_name = "Anyone"
+      cidr_block   = "0.0.0.0/0"
+    },
+  ]
+
+  description = "List of CIDR blocks to allow access to the master's API endpoint. This is specified as a slice of objects, where each object has a display_name and cidr_block attribute. The default behavior is to allow anyone (0.0.0.0/0) access to the endpoint. You should restrict access to external IPs that need to access the cluster."
+}
+
+# For more details please see the following page:
+# https://www.terraform.io/docs/providers/google/r/container_cluster.html#node_locations
+variable node_locations {
+  type = list(string)
+  description = "List zones in which the clust's nodes are located. Nodes must be in the region of their regional cluster."
+}
+
 # Parameters authorized:
-# network (default: default)
-# subnetwork (default: default)
-# disable_horizontal_pod_autoscaling (default: false)
-# disable_http_load_balancing (default: false)
-# disable_kubernetes_dashboard (default: false)
-# disable_network_policy_config (default: true)
 # enable_kubernetes_alpha (default: false)
 # enable_legacy_abac (default: false)
 # maintenance_window (default: 4:30)
 # version (default: Data resource)
-# monitoring_service (default: none)
-# logging_service (default: logging.googleapis.com)
+# monitoring_service (default: monitoring.googleapis.com/kubernetes)
+# logging_service (default: logging.googleapis.com/kubernetes)
 variable "master" {
   type        = "map"
   description = "Kubernetes master parameters to initialize"
 }
 
 # Parameters authorized:
-# node_count (default: 2)
-# remove (default: false)
-# disk_size_gb (default: 10)
-# disk_type (default: pd-standard)
-# image (default: COS)
-# local_ssd_count (default: 0)
-# oauth_scopes (default: https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring)
-# machine_type (default: n1-standard-1)
-# preemptible (default: false)
-# service_account (default: default)
-variable "default_node_pool" {
-  type        = "map"
-  default     = {}
-  description = "Default pool setting"
+# disable_horizontal_pod_autoscaling (default: false)
+# disable_http_load_balancing (default: false)
+# disable_network_policy_config (default: true)
+variable "addons_config" {
+  type = "map"
+  description: "GKE addons settings"
+}
+
+# Parameters authorized:
+# disabled_istio_config (default: true)
+# istio_auth: (default: AUTH_MUTUAL_TLS)
+variable "beta_addons_config" {
+  type = "map"
+  description = "Kubernetes beta addons settings"
 }
 
 # Parameters authorized:
@@ -89,22 +210,4 @@ variable "metadata" {
   description = "The metadata key/value pairs assigned to instances in the cluster"
   type        = "map"
   default     = {}
-}
-
-##########################
-###      NODE GKE      ###
-##########################
-
-# https://www.terraform.io/docs/providers/google/r/container_cluster.html#additional_zones
-variable "node_additional_zones" {
-  type        = "list"
-  default     = []
-  description = "The list of additional Google Compute Engine locations in which the cluster's nodes should be located. If additional zones are configured, the number of nodes specified in initial_node_count is created in all specified zones"
-}
-
-# https://www.terraform.io/docs/providers/google/r/container_cluster.html#ip_allocation_policy
-variable "ip_allocation_policy" {
-  type        = "list"
-  default     = []
-  description = "Configuration for cluster IP allocation. As of now, only pre-allocated subnetworks (custom type with secondary ranges) are supported"
 }

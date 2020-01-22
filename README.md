@@ -1,6 +1,6 @@
 # Google Kubernetes Engine (GKE) cluster
 
-Compatible provider `2.5.0` (**stable**)
+Compatible provider `3.5.0` (**stable**)
 
 ## Examples
 
@@ -9,7 +9,7 @@ Compatible provider `2.5.0` (**stable**)
 
 ```hcl
 module "gke-cluster" {
-  source = "google-terraform-modules/kubernetes-engine/google"
+  source = "github.com/framled/kubernetes-engine/google"
   version = "2.5.0"
 
   general = {
@@ -70,13 +70,28 @@ module "gke-cluster" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|:----:|:-----:|:-----:|
-| default_node_pool | Default pool setting | map | `<map>` | no |
 | general | Global parameters | map | - | yes |
-| ip_allocation_policy | Configuration for cluster IP allocation. As of now, only pre-allocated subnetworks (custom type with secondary ranges) are supported | list | `<list>` | no |
+| region | Region in which to create the cluster and run Atlantis. | string | `us-east4`| no |
+| zone | The zone where the cluster is located. Set up this if you want a zonal cluster | string | `` | no |
+| project | Project ID where Terraform is authenticated to run to create additional projects. If provided, Terraform will create the GKE and cluster inside this project. If not given, Terraform will generate a new project. | string | ``| yes |
+| org_id | Organization ID. | string | - | yes |
+| billing_account | Billing account ID. | `string` | - | yes |
+| project_services | List of services to enable on the project. | list(string) | `list` |  no |
+| service_account_iam_roles | List of IAM roles to assign to the service account. | list(string) | `["roles/logging.logWriter","roles/monitoring.metricWriter","roles/monitoring.viewer"]` |  no |
+| service_account_custom_iam_roles | List of arbitrary additional IAM roles to attach to the service account on the cluster nodes. | list(string) | `` |  no |
+| network | Network for the GKE, by default would create a new network | string | `` |  yes |
+| subnetwork | Network for the GKE, by default would create a new network | string | `` |  yes |
+| kubernetes_network_ipv4_cidr | IP CIDR block for the subnetwork. This must be at least /22 and cannot overlap with any other IP CIDR ranges. | string | `10.0.96.0/22` | no | 
+| kubernetes_pods_ipv4_cidr | IP CIDR block for pods. This must be at least /22 and cannot overlap with any other IP CIDR ranges. | string | `10.0.92.0/22` | no |
+| kubernetes_services_ipv4_cidr | IP CIDR block for services. This must be at least /22 and cannot overlap with any other IP CIDR ranges. | string | `10.0.88.0/22` | no |
+| kubernetes_masters_ipv4_cidr | IP CIDR block for the Kubernetes master nodes. This must be exactly /28 and cannot overlap with any other IP CIDR ranges. | string | `10.0.82.0/28` | no |
+| kubernetes_master_authorized_networks | List of CIDR blocks to allow access to the master's API endpoint. This is specified as a slice of objects, where each object has a display_name and cidr_block attribute. The default behavior is to allow anyone (0.0.0.0/0) access to the endpoint. You should restrict access to external IPs that need to access the cluster. | list(string) | `[{display_name = "Anyone", cidr_block = "0.0.0.0/0"}` | no |
+| node_locations | List zones in which the cluster nodes are located. Nodes must be in the region of their regional cluster. | list(string) | `<map>` | no |
+| master | Kubernetes master parameters to initialize | map | `<map>` | yes |
+| addons_config | GKE addons settings | map | `<map>` | no |
+| beta_addons_config | GKE beta addons settings | map | `<map>` | no |
+| node_pool | Node pool setting to create | map | `<map>` | no |
 | labels | The Kubernetes labels (key/value pairs) to be applied to each node | map | `<map>` | no |
-| master | Kubernetes master parameters to initialize | map | - | yes |
-| node_additional_zones | The list of additional Google Compute Engine locations in which the cluster's nodes should be located. If additional zones are configured, the number of nodes specified in initial_node_count is created in all specified zones | list | `<list>` | no |
-| node_pool | Node pool setting to create | list | `<list>` | no |
 | tags | The list of instance tags applied to all nodes. Tags are used to identify valid sources or targets for network firewalls | list | `<list>` | no |
 
 
@@ -93,3 +108,4 @@ module "gke-cluster" {
 | instance_group_urls | List of instance group URLs which have been assigned to the cluster |
 | maintenance_window | Duration of the time window, automatically chosen to be smallest possible in the given scenario. Duration will be in RFC3339 format PTnHnMnS |
 | master_version | The current version of the master in the cluster. |
+
