@@ -9,52 +9,40 @@
 ##########################
 
 # Parameters authorized:
-# name (mandatory)
+# project_name (mandatory)
 # env (mandatory)
-variable "general" {
-  type        = "map"
+variable general {
+  type        = map(string)
   description = "Global parameters"
 }
 
-variable "region" {
+variable region {
   type        = string
   default     = "us-east4"
   description = "Region in which to create the cluster and run Atlantis."
 }
 
 variable zone {
-  type = "string"
+  type = string
   description = "The zone where the cluster is located. Set up this if you want a zonal cluster"
 }
 
 ##########################
 ###       Project      ###
 ##########################
-
-variable "project" {
+variable project {
   type        = string
   default     = ""
   description = "Project ID where Terraform is authenticated to run to create additional projects. If provided, Terraform will create the GKE and cluster inside this project. If not given, Terraform will generate a new project."
 }
 
-variable "org_id" {
-  type        = string
-  description = "Organization ID."
-}
-
-variable "billing_account" {
-  type        = string
-  description = "Billing account ID."
-}
-
-variable "project_services" {
+variable project_services {
   type = list(string)
   default = [
     "cloudkms.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "container.googleapis.com",
     "compute.googleapis.com",
-    "gcp.redisenterprise.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
@@ -62,34 +50,18 @@ variable "project_services" {
   description = "List of services to enable on the project."
 }
 
-variable "service_account_iam_roles" {
-  type = list(string)
-  default = [
-    "roles/logging.logWriter",
-    "roles/monitoring.metricWriter",
-    "roles/monitoring.viewer",
-  ]
-  description = "List of IAM roles to assign to the service account."
-}
-
-variable "service_account_custom_iam_roles" {
-  type        = list(string)
-  default     = []
-  description = "List of arbitrary additional IAM roles to attach to the service account on the cluster nodes."
-}
-
 ##########################
 ###       Network      ###
 ##########################
 
 variable network {
-  type = "string"
+  type = string
   description = "Network for the GKE, by default would create a new network"
   default = ""
 }
 
 variable subnetwork {
-  type = "string"
+  type = string
   description = "Network for the GKE, by default would create a new network"
   default = ""
 }
@@ -97,31 +69,31 @@ variable subnetwork {
 ##########################
 ###         GKE        ###
 ##########################
-variable "kubernetes_network_ipv4_cidr" {
+variable kubernetes_network_ipv4_cidr {
   type        = string
   default     = "10.0.96.0/22"
   description = "IP CIDR block for the subnetwork. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
 }
 
-variable "kubernetes_pods_ipv4_cidr" {
+variable kubernetes_pods_ipv4_cidr {
   type        = string
   default     = "10.0.92.0/22"
   description = "IP CIDR block for pods. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
 }
 
-variable "kubernetes_services_ipv4_cidr" {
+variable kubernetes_services_ipv4_cidr {
   type        = string
   default     = "10.0.88.0/22"
   description = "IP CIDR block for services. This must be at least /22 and cannot overlap with any other IP CIDR ranges."
 }
 
-variable "kubernetes_masters_ipv4_cidr" {
+variable kubernetes_masters_ipv4_cidr {
   type        = string
   default     = "10.0.82.0/28"
   description = "IP CIDR block for the Kubernetes master nodes. This must be exactly /28 and cannot overlap with any other IP CIDR ranges."
 }
 
-variable "kubernetes_master_authorized_networks" {
+variable kubernetes_master_authorized_networks {
   type = list(object({
     display_name = string
     cidr_block   = string
@@ -151,8 +123,9 @@ variable node_locations {
 # version (default: Data resource)
 # monitoring_service (default: monitoring.googleapis.com/kubernetes)
 # logging_service (default: logging.googleapis.com/kubernetes)
-variable "master" {
-  type        = "map"
+# vertical_autoscaling (default: false)
+variable master {
+  type        = map(string)
   description = "Kubernetes master parameters to initialize"
 }
 
@@ -160,20 +133,38 @@ variable "master" {
 # disable_horizontal_pod_autoscaling (default: false)
 # disable_http_load_balancing (default: false)
 # disable_network_policy_config (default: true)
-variable "addons_config" {
-  type = "map"
-  description: "GKE addons settings"
+variable addons_config {
+  type = map(string)
+  description = "GKE addons settings"
+  default = {}
 }
 
 # Parameters authorized:
 # disabled_istio_config (default: true)
-# istio_auth: (default: AUTH_MUTUAL_TLS)
-variable "beta_addons_config" {
-  type = "map"
+# istio_auth_mutual_tls: (default: AUTH_MUTUAL_TLS, options: [AUTH_NONE AUTH_MUTUAL_TLS)
+variable beta_addons_config {
+  type = map(string)
   description = "Kubernetes beta addons settings"
+  default = {
+    disabled_istio_config = true
+    istio_auth_mutual_tls = "AUTH_MUTUAL_TLS",
+  }
 }
 
 # Parameters authorized:
+# initial_node_count (default: 2)
+# remove: (default: true)
+variable default_node_pool {
+  type = map(string)
+  description = "Default node pool"
+  default = {
+    initial_node_count = 2,
+    remove = true
+  }
+}
+
+# Parameters authorized:
+# initial_node_count (default: 2)
 # node_count (default: 3)
 # machine_type (default: n1-standard-1)
 # disk_size_gb (default: 10)
@@ -185,29 +176,31 @@ variable "beta_addons_config" {
 # auto_repair (default: true)
 # auto_upgrade (default: true)
 # metadata (default: {})
-variable "node_pool" {
-  type        = "list"
+variable node_pool {
+  type        = list(map(string))
   default     = []
   description = "Node pool setting to create"
 }
 
 # https://www.terraform.io/docs/providers/google/r/container_cluster.html#tags
-variable "tags" {
-  type        = "list"
+variable tags {
+  type        = list(string)
   default     = []
   description = "The list of instance tags applied to all nodes. Tags are used to identify valid sources or targets for network firewalls"
 }
 
 # https://www.terraform.io/docs/providers/google/r/container_cluster.html#labels
-variable "labels" {
+variable labels {
   description = "The Kubernetes labels (key/value pairs) to be applied to each node"
-  type        = "map"
+  type        = map(string)
   default     = {}
 }
 
 # https://www.terraform.io/docs/providers/google/r/container_cluster.html#metadata
-variable "metadata" {
+variable metadata {
   description = "The metadata key/value pairs assigned to instances in the cluster"
-  type        = "map"
-  default     = {}
+  type        = map(string)
+  default     = {
+    disable-legacy-endpoints = "true"
+  }
 }

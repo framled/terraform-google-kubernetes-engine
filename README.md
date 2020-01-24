@@ -2,6 +2,8 @@
 
 Compatible provider `3.5.0` (**stable**)
 
+Download, install, and configure the Google Cloud SDK. You will need to configure your default application credentials so Terraform can run. It will run against your default project, but all resources are created in the (new) project that it creates. 
+
 ## Examples
 
 * 1 cluster, 1 default node pool (2 nodes (10GB/node) n1-standard-1), latest version of Kubernetes for each node,
@@ -73,7 +75,7 @@ module "gke-cluster" {
 | general | Global parameters | map | - | yes |
 | region | Region in which to create the cluster and run Atlantis. | string | `us-east4`| no |
 | zone | The zone where the cluster is located. Set up this if you want a zonal cluster | string | `` | no |
-| project | Project ID where Terraform is authenticated to run to create additional projects. If provided, Terraform will create the GKE and cluster inside this project. If not given, Terraform will generate a new project. | string | ``| yes |
+| project | Project ID where Terraform is authenticated to run to create additional projects. If provided, Terraform will create the GKE and cluster inside this project. If not given, Terraform will generate a new project using name given in general variable. | string | ``| yes |
 | org_id | Organization ID. | string | - | yes |
 | billing_account | Billing account ID. | `string` | - | yes |
 | project_services | List of services to enable on the project. | list(string) | `list` |  no |
@@ -87,10 +89,10 @@ module "gke-cluster" {
 | kubernetes_masters_ipv4_cidr | IP CIDR block for the Kubernetes master nodes. This must be exactly /28 and cannot overlap with any other IP CIDR ranges. | string | `10.0.82.0/28` | no |
 | kubernetes_master_authorized_networks | List of CIDR blocks to allow access to the master's API endpoint. This is specified as a slice of objects, where each object has a display_name and cidr_block attribute. The default behavior is to allow anyone (0.0.0.0/0) access to the endpoint. You should restrict access to external IPs that need to access the cluster. | list(string) | `[{display_name = "Anyone", cidr_block = "0.0.0.0/0"}` | no |
 | node_locations | List zones in which the cluster nodes are located. Nodes must be in the region of their regional cluster. | list(string) | `<map>` | no |
-| master | Kubernetes master parameters to initialize | map | `<map>` | yes |
+| master | Kubernetes master parameters to initialize | map | `<map>` | no |
 | addons_config | GKE addons settings | map | `<map>` | no |
 | beta_addons_config | GKE beta addons settings | map | `<map>` | no |
-| node_pool | Node pool setting to create | map | `<map>` | no |
+| node_pool | Node pool setting to create | list(map(string)) | `list(map(string))` | no |
 | labels | The Kubernetes labels (key/value pairs) to be applied to each node | map | `<map>` | no |
 | tags | The list of instance tags applied to all nodes. Tags are used to identify valid sources or targets for network firewalls | list | `<list>` | no |
 

@@ -7,34 +7,40 @@ locals {
 provider "google" {
   region  = var.region
   project = var.project
+  version = "~> 3.5.0"
 }
 
 provider "google-beta" {
   region  = var.region
   project = var.project
+  version = "~> 3.5.0"
+  alias = "google-beta"
 }
 
 # This data source fetches the project name, and provides the appropriate URLs to use for container registry for this project.
 # https://www.terraform.io/docs/providers/google/d/google_container_registry_repository.html
-data "google_container_registry_repository" "registry" {}
+data "google_container_registry_repository" "registry" {
+  project = data.google_project.project.project_id
+}
 
 # Provides access to available Google Container Engine versions in a zone for a given project.
 # https://www.terraform.io/docs/providers/google/d/google_container_engine_versions.html
 data "google_container_engine_versions" "engine_version" {
+  project = data.google_project.project.project_id
   location = local.location
 }
 
 # Manages a Node Pool resource within GKE
 # https://www.terraform.io/docs/providers/google/r/container_node_pool.html
-resource "google_container_node_pool" "new_container_cluster_node_pool" {
+resource "google_container_node_pool" "node_pool" {
   count = length(var.node_pool)
 
   project               = data.google_project.project.project_id
   name                  = "${local.name_prefix}-${local.location}-pool-${count.index}"
   location              = local.location
-  cluster               = google_container_cluster.new_container_cluster.name
-  initial_node_count    = lookup(var.node_pool, "node_count", 2)
-  node_count            = lookup(var.node_pool[count.index], "node_count", 3)
+  cluster               = google_container_cluster.primary.name
+  initial_node_count    = lookup(var.node_pool[count.index], "initial_node_count", 2)
+  provider              = google-beta
 
   node_config {
     disk_size_gb    = lookup(var.node_pool[count.index], "disk_size_gb", 10)
@@ -45,10 +51,14 @@ resource "google_container_node_pool" "new_container_cluster_node_pool" {
 
     oauth_scopes    = split(",", lookup(var.node_pool[count.index], "oauth_scopes", "https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring"))
     preemptible     = lookup(var.node_pool[count.index], "preemptible", false)
-    service_account = lookup(var.node_pool[count.index], "service_account", "default")
+    service_account = google_service_account.service_account.email
     labels          = var.labels
     tags            = var.tags
     metadata        = var.metadata
+
+    workload_metadata_config {
+      node_metadata = lookup(var.node_pool[count.index], "node_metadata", "SECURE")
+    }
   }
 
   autoscaling {
@@ -69,17 +79,18 @@ resource "google_container_node_pool" "new_container_cluster_node_pool" {
 
 # Creates a Google Kubernetes Engine (GKE) cluster
 # https://www.terraform.io/docs/providers/google/r/container_cluster.html
-resource "google_container_cluster" "new_container_cluster" {
-  name                      = "${local.name_prefix}-${var.general["location"]}-master"
-  description               = "Kubernetes ${var.general["name"]} in ${var.general["location"]}"
+resource "google_container_cluster" "primary" {
+  name                      = "${local.name_prefix}-${local.location}-master"
+  description               = "Kubernetes ${var.general["name"]} in ${local.location}"
   location                  = local.location
   project                   = data.google_project.project.project_id
+  provider                  = google-beta
 
   network                   = data.google_compute_network.network.self_link
   subnetwork                = data.google_compute_subnetwork.subnetwork.self_link
   node_locations            = var.node_locations
-  initial_node_count        = lookup(var.node_pool, "node_count", 2)
-  remove_default_node_pool  = lookup(var.node_pool, "remove", false)
+  initial_node_count        = lookup(var.default_node_pool, "initial_node_count", 1)
+  remove_default_node_pool  = lookup(var.default_node_pool, "remove", true)
 
   addons_config {
     horizontal_pod_autoscaling {
@@ -96,7 +107,7 @@ resource "google_container_cluster" "new_container_cluster" {
 
     istio_config {
       disabled = lookup(var.beta_addons_config, "disable_istio_config", true)
-      auth = lookup(var.beta_addons_config, "istio_auth_mutual_tls", true)
+      auth = lookup(var.beta_addons_config, "istio_auth_mutual_tls", "AUTH_MUTUAL_TLS")
     }
   }
 
@@ -111,8 +122,8 @@ resource "google_container_cluster" "new_container_cluster" {
 
   # Allocate IPs in our subnetwork
   ip_allocation_policy {
-    cluster_secondary_range_name  = google_compute_subnetwork.subnetwork.secondary_ip_range[0].range_name
-    services_secondary_range_name = google_compute_subnetwork.subnetwork.secondary_ip_range[1].range_name
+    cluster_secondary_range_name  = data.google_compute_subnetwork.subnetwork.secondary_ip_range[0].range_name
+    services_secondary_range_name = data.google_compute_subnetwork.subnetwork.secondary_ip_range[1].range_name
   }
 
   maintenance_policy {
@@ -133,7 +144,7 @@ resource "google_container_cluster" "new_container_cluster" {
     password = ""
 
     client_certificate_config {
-      issue_client_certificate = false
+      issue_client_certificate = false # por investigar
     }
   }
 
@@ -160,4 +171,14 @@ resource "google_container_cluster" "new_container_cluster" {
     enable_private_nodes   = true
     master_ipv4_cidr_block = var.kubernetes_masters_ipv4_cidr
   }
+
+  vertical_pod_autoscaling {
+    enabled = lookup(var.master, "vertical_autoscaling", false)
+  }
+
+  node_config {
+    service_account = google_service_account.service_account.email
+  }
+
+  depends_on = [google_service_account.service_account]
 }
